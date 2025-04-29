@@ -1,0 +1,72 @@
+name: Selenium Scraper Test
+
+# Control when the workflow will run
+on:
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Pickup Location (City, State)'
+        required: true
+        default: 'Tempe, AZ'
+      pickup_date:
+        description: 'Pickup Date (MM/DD/YYYY)'
+        required: true
+        default: '04/30/2025'
+      dropoff_date:
+        description: 'Dropoff Date (MM/DD/YYYY)'
+        required: true
+        default: '04/30/2025'
+
+# A workflow run is made up of one or more jobs
+jobs:
+  # Job to run the Selenium scraper
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository content
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      # Install Chrome browser
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        
+      # Check Chrome version
+      - name: Chrome version
+        run: chrome --version
+          
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Verify installations
+          python -c "import selenium; print(f'Selenium version: {selenium.__version__}')"
+          python -c "import webdriver_manager; print(f'Webdriver Manager version: {webdriver_manager.__version__}')"
+          python -c "import pandas; print(f'Pandas version: {pandas.__version__}')"
+          python -c "import requests; print(f'Requests version: {requests.__version__}')"
+
+      # Run the scraper
+      - name: Run Selenium scraper
+        run: python scraper.py "${{ github.event.inputs.location }}" "${{ github.event.inputs.pickup_date }}" "${{ github.event.inputs.dropoff_date }}" "penske_data.csv"
+
+      # Upload results as GitHub artifacts
+      - name: Upload CSV Result
+        uses: actions/upload-artifact@v3
+        with:
+          name: penske-data-csv
+          path: penske_data.csv
+          
+      - name: Upload JSON Result
+        uses: actions/upload-artifact@v3
+        with:
+          name: penske-data-json
+          path: penske_data.json
