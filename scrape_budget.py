@@ -11,15 +11,19 @@ def scrape_penske(city_state, pickup_day, save_to_csv=False):
         page.goto("https://www.pensketruckrental.com/")
 
         # 1. Return Location = Same Location
+        page.wait_for_selector('fieldset.quote_return_location .quote-select', state='visible')
         page.click('fieldset.quote_return_location .quote-select')
+        page.wait_for_selector('span.quote-option[data-value="same-location"]', state='visible')
         page.click('span.quote-option[data-value="same-location"]')
 
         # 2. Pickup Location
+        page.wait_for_selector('input#pickup_location_txtboxHM', state='visible')
         page.click('input#pickup_location_txtboxHM')
         page.fill('input#pickup_location_txtboxHM', city_state)
         page.wait_for_timeout(1500)  # Wait for dropdown suggestions
         page.keyboard.press('ArrowDown')
         page.keyboard.press('Enter')
+
 
         # 3. Pickup Date
         page.click('input#mat-input-1')
