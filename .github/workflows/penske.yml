@@ -60,13 +60,13 @@ jobs:
 
       # Upload results as GitHub artifacts
       - name: Upload CSV Result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: penske-data-csv
           path: penske_data.csv
           
       - name: Upload JSON Result
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: penske-data-json
           path: penske_data.json
