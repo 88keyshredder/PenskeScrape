@@ -35,13 +35,18 @@ jobs:
         with:
           python-version: '3.10'
           
-      # Install Chrome browser
-      - name: Setup Chrome
-        uses: browser-actions/setup-chrome@latest
+      # Install Chrome with ChromeDriver
+      - name: Setup Chrome with ChromeDriver
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
         
-      # Check Chrome version
-      - name: Chrome version
-        run: chrome --version
+      # Check Chrome and ChromeDriver versions
+      - name: Check versions
+        run: |
+          chrome --version
+          chromedriver --version
           
       # Install dependencies directly with compatible versions
       - name: Install dependencies
@@ -50,16 +55,26 @@ jobs:
           # Install compatible versions of numpy and pandas
           pip install numpy==1.23.5
           pip install pandas==1.5.3
-          pip install selenium==4.9.1 webdriver-manager==3.8.6 requests==2.31.0
+          pip install selenium==4.9.1 requests==2.31.0
+          # Modified to use local ChromeDriver instead of webdriver-manager
+          # No need for webdriver-manager anymore
+          
           # Verify installations
           python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
           python -c "import pandas; print(f'Pandas version: {pandas.__version__}')"
           python -c "import selenium; print(f'Selenium version: {selenium.__version__}')"
-          python -c "import webdriver_manager; print(f'Webdriver Manager version: {webdriver_manager.__version__}')"
 
-      # Run the scraper
+      # Run environment test
+      - name: Test environment setup
+        run: python test_environment.py
+        
+      # Run the scraper with modified code to use the local ChromeDriver
       - name: Run Selenium scraper
-        run: python scraper.py "${{ github.event.inputs.location }}" "${{ github.event.inputs.pickup_date }}" "${{ github.event.inputs.dropoff_date }}" "penske_data.csv"
+        run: |
+          # Modify the scraper.py file to use the local ChromeDriver
+          sed -i 's/service = Service(ChromeDriverManager().install())/service = Service("chromedriver")/' scraper.py
+          # Run the scraper
+          python scraper.py "${{ github.event.inputs.location }}" "${{ github.event.inputs.pickup_date }}" "${{ github.event.inputs.dropoff_date }}" "penske_data.csv"
 
       # Upload results as GitHub artifacts
       - name: Upload CSV Result
