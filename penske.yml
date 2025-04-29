@@ -1,0 +1,135 @@
+name: Penske Truck Rental Scraper
+
+# Control when the workflow will run
+on:
+  # Allow triggering via the GitHub API (for Databricks integration)
+  repository_dispatch:
+    types: [scrape-penske]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Pickup Location (City, State)'
+        required: true
+        default: 'Tempe, AZ'
+      pickup_date:
+        description: 'Pickup Date (MM/DD/YYYY)'
+        required: true
+        default: '04/30/2025'
+      dropoff_date:
+        description: 'Dropoff Date (MM/DD/YYYY)'
+        required: true
+        default: '04/30/2025'
+
+# Environment variables for the workflow
+env:
+  OUTPUT_FILE: penske_data.csv
+  OUTPUT_FILE_JSON: penske_data.json
+
+# A workflow run is made up of one or more jobs
+jobs:
+  # Job to run the Selenium scraper
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository content
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      # Install Chrome browser
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        
+      # Check Chrome version
+      - name: Chrome version
+        run: chrome --version
+          
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium webdriver-manager pandas requests
+
+      # Get parameters from event or manual input
+      - name: Set parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "LOCATION=${{ github.event.client_payload.location || 'Tempe, AZ' }}" >> $GITHUB_ENV
+            echo "PICKUP_DATE=${{ github.event.client_payload.pickup_date || '04/30/2025' }}" >> $GITHUB_ENV
+            echo "DROPOFF_DATE=${{ github.event.client_payload.dropoff_date || '04/30/2025' }}" >> $GITHUB_ENV
+          else
+            echo "LOCATION=${{ github.event.inputs.location }}" >> $GITHUB_ENV
+            echo "PICKUP_DATE=${{ github.event.inputs.pickup_date }}" >> $GITHUB_ENV
+            echo "DROPOFF_DATE=${{ github.event.inputs.dropoff_date }}" >> $GITHUB_ENV
+          fi
+
+      # Run the scraper
+      - name: Run Selenium scraper
+        run: python scraper.py "${{ env.LOCATION }}" "${{ env.PICKUP_DATE }}" "${{ env.DROPOFF_DATE }}" "${{ env.OUTPUT_FILE }}"
+
+      # Upload results as GitHub artifacts
+      - name: Upload CSV Result
+        uses: actions/upload-artifact@v3
+        with:
+          name: penske-data-csv
+          path: ${{ env.OUTPUT_FILE }}
+          
+      - name: Upload JSON Result
+        uses: actions/upload-artifact@v3
+        with:
+          name: penske-data-json
+          path: ${{ env.OUTPUT_FILE_JSON }}
+          
+      # Optional: Push results to Databricks
+      - name: Push to Databricks
+        if: success()
+        run: |
+          # If credentials are provided as secrets, use them
+          if [ -n "${{ secrets.DATABRICKS_HOST }}" ] && [ -n "${{ secrets.DATABRICKS_TOKEN }}" ]; then
+            echo "Pushing data to Databricks..."
+            
+            # Install Databricks CLI
+            pip install databricks-cli
+            
+            # Configure Databricks CLI
+            databricks configure --token << EOF
+            ${{ secrets.DATABRICKS_HOST }}
+            ${{ secrets.DATABRICKS_TOKEN }}
+            EOF
+            
+            # Upload the file to DBFS
+            databricks fs cp ${{ env.OUTPUT_FILE }} dbfs:/scraper-data/${{ env.OUTPUT_FILE }}
+            databricks fs cp ${{ env.OUTPUT_FILE_JSON }} dbfs:/scraper-data/${{ env.OUTPUT_FILE_JSON }}
+            
+            # Optional: Trigger a Databricks notebook to process the data
+            if [ -n "${{ secrets.DATABRICKS_NOTEBOOK_PATH }}" ]; then
+              databricks jobs submit --json '{
+                "run_name": "Process Scraped Data",
+                "notebook_task": {
+                  "notebook_path": "${{ secrets.DATABRICKS_NOTEBOOK_PATH }}",
+                  "base_parameters": {
+                    "data_path": "dbfs:/scraper-data/${{ env.OUTPUT_FILE }}",
+                    "location": "${{ env.LOCATION }}",
+                    "pickup_date": "${{ env.PICKUP_DATE }}",
+                    "dropoff_date": "${{ env.DROPOFF_DATE }}"
+                  }
+                },
+                "new_cluster": {
+                  "spark_version": "11.3.x-scala2.12",
+                  "node_type_id": "Standard_DS3_v2",
+                  "num_workers": 1
+                }
+              }'
+            fi
+          else
+            echo "Skipping Databricks upload: credentials not provided"
+          fi
